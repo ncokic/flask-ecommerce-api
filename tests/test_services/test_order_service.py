@@ -1,0 +1,151 @@
+from datetime import datetime, UTC, timedelta
+from decimal import Decimal
+from unittest.mock import MagicMock
+
+import pytest
+
+from app.utils.error_handlers import ServiceError
+
+
+class TestOrderService:
+    def test_create_order_insufficient_stock(self, mock_order_service):
+        service, mocks = mock_order_service
+        mock_product = MagicMock(name="Product", stock=2)
+        mock_item = MagicMock(product=mock_product, quantity=3)
+        mock_cart = MagicMock(items=[mock_item])
+
+        with pytest.raises(ServiceError) as e:
+            service.create_order(mock_cart, address="Test Address 123")
+
+        assert e.value.status_code == 409
+        assert "not in stock" in e.value.message.lower()
+        mocks["session"].commit.assert_not_called()
+
+    def test_create_order_new_address(self, mock_order_service):
+        service, mocks = mock_order_service
+        mock_product = MagicMock(name="Product", price=Decimal("20.00"), stock=10)
+        mock_item = MagicMock(product=mock_product, quantity=3)
+        mock_cart = MagicMock(user_id=1, items=[mock_item])
+
+        mocks["address_repo"].get_existing_address.return_value = None
+        mock_address = MagicMock(id=10)
+        mocks["address_repo"].save.return_value = mock_address
+
+        order = service.create_order(mock_cart, "Test Address 123")
+        assert order.total_amount == Decimal("60.00")
+
+    def test_create_order_existing_address(self, mock_order_service):
+        service, mocks = mock_order_service
+        mock_address = MagicMock(id=100)
+        mocks["address_repo"].get_existing_address.return_value = mock_address
+
+        mock_product = MagicMock(name="Product", price=Decimal("20.00"), stock=10)
+        mock_item = MagicMock(product=mock_product, quantity=3)
+        mock_cart = MagicMock(user_id=1, items=[mock_item])
+
+        order = service.create_order(mock_cart, mock_address)
+        mocks["address_repo"].save.assert_not_called()
+        assert order.shipping_address_id == 100
+
+    def test_cancel_order_invalid_status(self, mock_order_service):
+        service, mocks = mock_order_service
+        mock_order = MagicMock(id=1, status="shipped", created_at=datetime.now(UTC))
+        mocks["order_repo"].get_user_order.return_value = mock_order
+
+        with pytest.raises(ServiceError) as e:
+            service.cancel_order(user_id=1, order_id=mock_order.id)
+
+        assert e.value.status_code == 409
+        assert "failed" in e.value.message.lower()
+        mocks["session"].commit.assert_not_called()
+
+    @pytest.mark.parametrize("minutes, should_fail", [
+        pytest.param(61, True, id="cancellation_window_expired"),
+        pytest.param(59, False, id="cancellation_window_active")
+    ])
+    def test_cancel_order_cancellation_window(self, mock_order_service, minutes, should_fail):
+        service, mocks = mock_order_service
+        mock_order = MagicMock(id=1, created_at=datetime.now(UTC)-timedelta(minutes=minutes))
+        mocks["order_repo"].get_user_order.return_value = mock_order
+
+        if should_fail:
+            with pytest.raises(ServiceError) as e:
+                service.cancel_order(user_id=1, order_id=mock_order.id)
+            assert e.value.status_code == 409
+            assert "window expired" in e.value.message.lower()
+            mocks["session"].commit.assert_not_called()
+
+        else:
+            order = service.cancel_order(user_id=1, order_id=mock_order.id)
+            assert order
+            mocks["session"].commit.assert_called_once()
+
+    def test_cancel_order_if_order_pending(self, mock_order_service):
+        service, mocks = mock_order_service
+        mock_order = MagicMock(id=1, status="pending", created_at=datetime.now(UTC))
+        mocks["order_repo"].get_user_order.return_value = mock_order
+        service.cancel_order(user_id=1, order_id=mock_order.id)
+        assert mock_order.status == "cancelled"
+        mocks["session"].commit.assert_called_once()
+
+    def test_cancel_order_if_order_paid_refund_and_restock(self, mock_order_service):
+        service, mocks = mock_order_service
+        mock_product = MagicMock(stock=8)
+        mock_item = MagicMock(product=mock_product, quantity=2)
+        mock_order = MagicMock(
+            id=1,
+            status="paid",
+            items=[mock_item],
+            created_at=datetime.now(UTC),
+        )
+        mocks["order_repo"].get_user_order.return_value = mock_order
+
+        service.cancel_order(user_id=1, order_id=mock_order.id)
+        mocks["payment_service"].create_refund_request.assert_called_once()
+        assert mock_product.stock == 10
+        assert mock_order.status == "cancelled"
+        mocks["session"].commit.assert_called_once()
+
+    def test_delivery_webhook_if_not_shipped(self, mock_order_service):
+        service, mocks = mock_order_service
+        mock_order = MagicMock(id=1, status="paid")
+        mocks["order_repo"].get_by_id.return_value = mock_order
+
+        with pytest.raises(ServiceError) as e:
+            service.delivery_webhook(order_id=mock_order.id)
+
+        assert e.value.status_code == 409
+        assert "only orders in shipping" in e.value.message.lower()
+        mocks["session"].commit.assert_not_called()
+
+    def test_delivery_webhook_if_shipped(self, mock_order_service):
+        service, mocks = mock_order_service
+        mock_order = MagicMock(id=1, status="shipped")
+        mocks["order_repo"].get_by_id.return_value = mock_order
+        order = service.delivery_webhook(order_id=mock_order.id)
+        assert order.status == "delivered"
+        mocks["session"].commit.assert_called_once()
+
+    def test_change_order_status_invalid_transition(self, mock_order_service):
+        service, mocks = mock_order_service
+        mock_order = MagicMock(id=1, status="paid")
+        mocks["order_repo"].get_by_id.return_value = mock_order
+
+        with pytest.raises(ServiceError) as e:
+            service.change_order_status(order_id=mock_order.id, new_status="shipped")
+
+        assert e.value.status_code == 409
+        assert "invalid" in e.value.message.lower()
+        mocks["session"].commit.assert_not_called()
+
+    @pytest.mark.parametrize("initial, target, expected", [
+        pytest.param("paid", "processing", "processing", id="from_paid_to_processing"),
+        pytest.param("processing", "shipped", "shipped", id="from_processing_to_shipped"),
+    ])
+    def test_change_order_status_valid_transition(self, mock_order_service, initial, target, expected):
+        service, mocks = mock_order_service
+        mock_order = MagicMock(id=1, status=initial)
+        mocks["order_repo"].get_by_id.return_value = mock_order
+        order = service.change_order_status(order_id=mock_order.id, new_status=target)
+        assert order.status == expected
+        mocks["session"].commit.assert_called_once()

@@ -1,0 +1,31 @@
+# 1. Python artifacts
+__pycache__/
+*.py[cod]
+*$py.class
+.pytest_cache/
+.ipynb_checkpoints/
+
+# 2. Virtual Environments (Don't copy local venv!)
+venv/
+.venv/
+env/
+
+# 3. Local Databases
+*.db
+*.sqlite3
+instance/
+
+# 4. Git & IDEs
+.git/
+.gitignore
+.vscode/
+.idea/
+
+# 5. Environment & Logs
+.env
+*.log
+
+# 6. Docker itself
+Dockerfile
+docker-compose.yml
+.dockerignore

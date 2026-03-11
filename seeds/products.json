@@ -1,0 +1,107 @@
+[
+  {
+    "name": "Wireless Mouse",
+    "description": "Ergonomic wireless mouse with adjustable DPI.",
+    "category": "Accessories",
+    "price": 19.99,
+    "stock": 120
+  },
+  {
+    "name": "Bluetooth Mouse",
+    "description": "Compact Bluetooth mouse for laptops and tablets.",
+    "category": "Accessories",
+    "price": 24.99,
+    "stock": 85
+  },
+  {
+    "name": "Gaming Mouse",
+    "description": "High-precision gaming mouse with customizable buttons.",
+    "category": "Accessories",
+    "price": 49.99,
+    "stock": 70
+  },
+  {
+    "name": "Mechanical Keyboard",
+    "description": "RGB backlit mechanical keyboard with blue switches.",
+    "category": "Accessories",
+    "price": 89.99,
+    "stock": 60
+  },
+  {
+    "name": "Wireless Keyboard",
+    "description": "Slim wireless keyboard with long battery life.",
+    "category": "Accessories",
+    "price": 59.99,
+    "stock": 95
+  },
+  {
+    "name": "27-inch Monitor",
+    "description": "4K UHD monitor with IPS panel and ultra-thin bezels.",
+    "category": "Displays",
+    "price": 299.99,
+    "stock": 25
+  },
+  {
+    "name": "24-inch Monitor",
+    "description": "Full HD monitor with vibrant colors and fast response time.",
+    "category": "Displays",
+    "price": 149.99,
+    "stock": 40
+  },
+  {
+    "name": "32-inch Curved Monitor",
+    "description": "Ultra-wide curved monitor for immersive productivity.",
+    "category": "Displays",
+    "price": 399.99,
+    "stock": 18
+  },
+  {
+    "name": "USB-C Hub",
+    "description": "7-in-1 USB-C hub with HDMI, USB 3.0, and SD card reader.",
+    "category": "Adapters",
+    "price": 39.99,
+    "stock": 150
+  },
+  {
+    "name": "USB-C to HDMI Adapter",
+    "description": "Adapter for connecting USB-C devices to HDMI displays.",
+    "category": "Adapters",
+    "price": 14.99,
+    "stock": 200
+  },
+  {
+    "name": "USB-A to USB-C Adapter",
+    "description": "Compact adapter for converting USB-A ports to USB-C.",
+    "category": "Adapters",
+    "price": 9.99,
+    "stock": 300
+  },
+  {
+    "name": "Noise Cancelling Headphones",
+    "description": "Over-ear headphones with active noise cancellation.",
+    "category": "Audio",
+    "price": 129.99,
+    "stock": 45
+  },
+  {
+    "name": "Wireless Earbuds",
+    "description": "True wireless earbuds with charging case and deep bass.",
+    "category": "Audio",
+    "price": 79.99,
+    "stock": 110
+  },
+  {
+    "name": "Bluetooth Speaker",
+    "description": "Portable Bluetooth speaker with 12-hour battery life.",
+    "category": "Audio",
+    "price": 49.99,
+    "stock": 90
+  },
+  {
+    "name": "Studio Headphones",
+    "description": "Professional studio headphones with flat frequency response.",
+    "category": "Audio",
+    "price": 159.99,
+    "stock": 30
+  }
+]
