@@ -18,22 +18,28 @@ A containerized, production-style REST API that simulates the backend of an e-co
 
 ## Installation & Setup
 
+There are 2 different options provided depending on if you want to run the app through Docker or locally. First, clone the repo:
+```bash
+git clone https://github.com/ncokic/flask-ecommerce-api.git
+cd flask-ecommerce-api
+```
+
 ### Option 1: Docker (Recommended):
 This approach automatically sets up the API, PostgreSQL database and Redis cache containers.
 
 ```bash
-# 1. Clone the repo
-git clone https://github.com/ncokic/flask-ecommerce-api.git
-cd flask-ecommerce-api
-
-# 2. Create your environment file from the provided example
+# 1. Create your environment file from the provided example
 cp .env.example .env
 
-# 3. Set up Docker containers
-make up # or  docker-compose up --build -d  if on Windows
+# 2. Set up Docker containers
+make up
+# OR
+docker-compose up --build -d # Windows
 
-# 4. Initialize the database and seed initial testing data
-make setup # or  docker-compose exec web flask setup  if on Windows
+# 3. Initialize the database and seed initial testing data
+make setup
+# OR
+docker-compose exec web flask setup # Windows
 ```
 
 ### Option 2: Local Development
@@ -42,17 +48,22 @@ This approach will run the app locally on your host machine using SQLite as data
 ```bash
 # 1. Create a virtual environment
 python -m venv venv
-source venv/bin/activate # or  venv\Scripts\activate.bat  if on Windows
 
-# 2. Install dependencies
-pip install -r requirements.txt
+# 2. Activate the created virtual environment
+source venv/bin/activate
+# OR
+venv\Scripts\Activate.ps1 # Windows
 
-# 3. Configure your .env from the provided .env.example
+# 3. Install dependencies
+python -m pip install -r requirements.txt
 
-# 4. Run the setup script
+# 4. Create your environment file from the provided example
+cp .env.example .env
+
+# 5. Run the setup script
 flask setup
 
-# 5. Start the server
+# 6. Start the server
 flask run
 ```
 
