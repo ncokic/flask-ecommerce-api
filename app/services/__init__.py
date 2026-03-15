@@ -1,4 +1,5 @@
 from .cart_service import CartService
+from .fraud_service import FraudService
 from .order_service import OrderService
 from .payment_service import PaymentService
 from .product_service import ProductService
@@ -9,4 +10,5 @@ __all__ = ["ProductService",
            "CartService",
            "OrderService",
            "PaymentService",
+           "FraudService"
            ]

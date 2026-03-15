@@ -4,8 +4,10 @@ from decimal import Decimal
 from sqlalchemy.orm import Session
 
 from app.enums import OrderStatus, RefundStatus, RefundReason
-from app.repositories import OrderRepository, OrderItemRepository, ShippingAddressRepository, RefundRepository
+from app.repositories import OrderRepository, OrderItemRepository, ShippingAddressRepository, RefundRepository, \
+    BillingAddressRepository
 from app.services.payment_service import PaymentService
+from app.services.fraud_service import FraudService
 from app.utils.error_handlers import ServiceError
 
 REFUND_WINDOW_MINUTES = 60
@@ -16,15 +18,19 @@ class OrderService:
             self,
             order_repo: OrderRepository,
             order_item_repo: OrderItemRepository,
-            address_repo: ShippingAddressRepository,
+            ship_address_repo: ShippingAddressRepository,
+            bill_address_repo: BillingAddressRepository,
             payment_service: PaymentService,
+            fraud_service: FraudService,
             refund_repo: RefundRepository,
             session: Session
     ):
         self.order_repo = order_repo
         self.order_item_repo = order_item_repo
-        self.address_repo = address_repo
+        self.ship_address_repo = ship_address_repo
+        self.bill_address_repo = bill_address_repo
         self.payment_service = payment_service
+        self.fraud_service = fraud_service
         self.refund_repo = refund_repo
         self.session = session
 
@@ -76,16 +82,32 @@ class OrderService:
         self.session.refresh(order)
         return order
 
-    def create_order(self, cart, address):
-        existing_address = self.address_repo.get_existing_address(address)
+    def check_address(self, address: dict, billing=False):
+        repo = self.ship_address_repo if not billing else self.bill_address_repo
+        existing_address = repo.get_existing_address(address)
         if existing_address:
-            order_address = existing_address
+            return existing_address
         else:
-            order_address = self.address_repo.save(address)
-            self.session.flush()
+            return repo.save(address)
+
+    def create_order(self, cart, checkout_data: dict):
+
+        shipping_adr_dict = checkout_data.get("shipping_address")
+        shipping_address = self.check_address(shipping_adr_dict)
+        if checkout_data["billing_same_as_shipping"]:
+            billing_adr_dict = checkout_data.get("shipping_address")
+            print("--- BILLING ADDRESS DICTIONARY ---")
+            print(billing_adr_dict)
+        else:
+            billing_adr_dict = checkout_data.get("billing_address")
+            if billing_adr_dict is None:
+                raise ServiceError(400, "Missing billing address.")
+        billing_address = self.check_address(billing_adr_dict, billing=True)
+        self.session.flush()
 
         order = self.order_repo.create_order(cart.user_id)
-        order.shipping_address_id = order_address.id
+        order.shipping_address_id = shipping_address.id
+        order.billing_address_id = billing_address.id
         self.session.flush()
 
         total_amount = Decimal("0.00")
@@ -95,7 +117,20 @@ class OrderService:
             order_item = self.order_item_repo.add_item_to_order(order, item)
             total_amount += item.quantity * item.product.price
         order.total_amount = total_amount
-        return order
+
+        try:
+            with self.session.begin_nested():
+                fraud_data = self.fraud_service.check_fraud(order, checkout_data)
+                if fraud_data["risk_assessment"] == "high":
+                    return None
+
+                if fraud_data["risk_assessment"] == "medium":
+                    order.status = OrderStatus.PENDING_REVIEW
+                return order
+
+        except Exception as e:
+            self.session.rollback()
+            raise e
 
     def cancel_order(self, user_id, order_id):
         order = self.get_user_order(user_id, order_id)
@@ -144,3 +179,4 @@ class OrderService:
         self.session.commit()
         self.session.refresh(order)
         return order
+

@@ -8,9 +8,9 @@ from app.repositories import (
     OrderItemRepository,
     ShippingAddressRepository,
     PaymentRepository,
-    RefundRepository
+    RefundRepository, BillingAddressRepository
 )
-from app.services import ProductService, UserService, CartService, OrderService, PaymentService
+from app.services import ProductService, UserService, CartService, OrderService, PaymentService, FraudService
 
 
 def get_product_service():
@@ -39,8 +39,10 @@ def get_order_service():
     return OrderService(
         order_repo=OrderRepository(session),
         order_item_repo=OrderItemRepository(session),
-        address_repo=ShippingAddressRepository(session),
+        ship_address_repo=ShippingAddressRepository(session),
+        bill_address_repo=BillingAddressRepository(session),
         payment_service=get_payment_service(),
+        fraud_service=get_fraud_service(),
         refund_repo=RefundRepository(session),
         session=session,
     )
@@ -54,6 +56,9 @@ def get_payment_service():
         refund_repo=RefundRepository(session),
         session=session,
     )
+
+def get_fraud_service():
+    return FraudService(order_repo=OrderRepository(db.session))
 
 def split_query_args(args):
     page = args.pop("page", None)

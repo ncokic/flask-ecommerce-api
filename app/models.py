@@ -1,9 +1,9 @@
 from datetime import datetime, UTC
 from decimal import Decimal
 
-from sqlalchemy import Integer, String, Numeric, DateTime, ForeignKey, Enum, UniqueConstraint
+from sqlalchemy import Integer, String, Numeric, DateTime, ForeignKey, Enum, UniqueConstraint, Index
 from sqlalchemy.ext.hybrid import hybrid_property
-from sqlalchemy.orm import mapped_column, Mapped, relationship
+from sqlalchemy.orm import mapped_column, Mapped, relationship, declared_attr
 
 from app.enums import UserRole, OrderStatus, PaymentStatus, RefundStatus, RefundReason
 from app.extensions import db, bcrypt
@@ -77,21 +77,27 @@ class Order(db.Model):
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
     user_id: Mapped[int] = mapped_column(ForeignKey("users.id"))
-    shipping_address_id: Mapped[int] = mapped_column(ForeignKey("addresses.id"))
+    shipping_address_id: Mapped[int] = mapped_column(ForeignKey("shipping_addresses.id"))
+    billing_address_id: Mapped[int] = mapped_column(ForeignKey("billing_addresses.id"))
     status: Mapped[OrderStatus] = mapped_column(
         Enum(OrderStatus, values_callable=OrderStatus.get_enum_values),
         nullable=False,
         default=OrderStatus.PENDING
     )
     total_amount: Mapped[Decimal] = mapped_column(Numeric(10, 2), nullable=False)
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(UTC))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(UTC), index=True)
     delivered_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=True)
 
     items: Mapped[list[OrderItem]] = relationship(back_populates="order", cascade="all, delete-orphan")
     payments: Mapped[list[Payment]] = relationship(back_populates="order")
     shipping_info: Mapped[ShippingAddress] = relationship(back_populates="order")
+    billing_info: Mapped[BillingAddress] = relationship(back_populates="order")
     user: Mapped[User] = relationship(back_populates="orders")
     refund_request: Mapped[Refund] = relationship(back_populates="order")
+
+    __table_args__ = (
+        Index("ix_user_id_created_at", "user_id", "created_at"),
+    )
 
 
 class OrderItem(db.Model):
@@ -107,22 +113,36 @@ class OrderItem(db.Model):
     product: Mapped[Product] = relationship()
 
 
-class ShippingAddress(db.Model):
-    __tablename__  = "addresses"
 
+class AddressMixin:
     id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
     full_name: Mapped[str] = mapped_column(String(100), nullable=False)
     street: Mapped[str] = mapped_column(String(100), nullable=False)
     city: Mapped[str] = mapped_column(String(100), nullable=False)
     postal_code: Mapped[str] = mapped_column(String(20), nullable=False)
-    country: Mapped[int] = mapped_column(String(100), nullable=False)
+    country: Mapped[str] = mapped_column(String(100), nullable=False)
     contact_phone: Mapped[str] = mapped_column(String(30), nullable=False)
+
+    @declared_attr
+    def __table_args__(cls):
+        return (
+            UniqueConstraint(
+                "full_name", "street", "city", "postal_code", "country",
+                name=f"{cls.__name__.lower()}_full_address"
+            ),
+        )
+
+
+class ShippingAddress(AddressMixin, db.Model):
+    __tablename__  = "shipping_addresses"
 
     order: Mapped[list[Order]] = relationship(back_populates="shipping_info")
 
-    __table_args__ = (
-        UniqueConstraint("full_name", "street", "city", "postal_code", "country", name="full_address"),
-    )
+
+class BillingAddress(AddressMixin, db.Model):
+    __tablename__ = "billing_addresses"
+
+    order: Mapped[list[Order]] = relationship(back_populates="billing_info")
 
 
 class Payment(db.Model):

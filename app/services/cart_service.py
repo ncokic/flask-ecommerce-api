@@ -101,11 +101,13 @@ class CartService:
             "total_cost": total_cost,
         }
 
-    def checkout_cart(self, user_id, address):
+    def checkout_cart(self, user_id, checkout_data):
         cart = self.get_or_create_user_cart(user_id)
         if not cart.items:
             raise ServiceError(422, "You cannot checkout an empty cart.")
-        order = self.order_service.create_order(cart, address)
+        order = self.order_service.create_order(cart, checkout_data)
+        if order is None:
+            raise ServiceError(403, "Transaction declined.")
         payment = self.payment_service.create_payment(order)
         self.session.commit()
         self.session.refresh(order)

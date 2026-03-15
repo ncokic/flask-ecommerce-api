@@ -112,12 +112,12 @@ def remove_cart_item(product_id):
 @limiter.limit("10 per minute")
 @api_cart_bp.arguments(OrderSchemas.AddressCreate)
 @api_cart_bp.response(201, CartSchemas.CheckoutResponse)
-def checkout(address):
+def checkout(checkout_data):
     """Checkout the user's cart and create a new order and payment."""
     service = get_cart_service()
     order, payment = service.checkout_cart(
         user_id=current_user.id,
-        address=address,
+        checkout_data=checkout_data,
     )
     return api_response(
         status_code=201,

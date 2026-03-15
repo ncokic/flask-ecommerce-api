@@ -33,4 +33,14 @@ def create_app(config_class=DevelopmentConfig):
     def index():
         return redirect(config_class.API_DOCS_URL)
 
+    from flask import jsonify
+
+    @app.errorhandler(422)
+    def handle_unprocessable_entity(err):
+        # exc contains the marshmallow validation errors
+        exc = getattr(err, "exc", None)
+        if exc:
+            print(f"!!! VALIDATION ERROR: {exc.messages}")
+        return jsonify({"errors": exc.messages if exc else "Unprocessable Entity"}), 422
+
     return app

@@ -2,7 +2,7 @@ from sqlalchemy import select, delete, func
 from sqlalchemy.orm import Session, joinedload, selectinload
 
 from app.extensions import db
-from app.models import Product, User, Cart, CartItem, ShippingAddress, Order, OrderItem, Payment, Refund
+from app.models import Product, User, Cart, CartItem, ShippingAddress, Order, OrderItem, Payment, Refund, BillingAddress
 
 
 class BaseRepository:
@@ -22,8 +22,13 @@ class BaseRepository:
 
     def save(self, obj):
         """Used for both create and update"""
-        self.session.add(obj)
-        return obj
+        if isinstance(obj, dict):
+            new_instance = self.model(**obj)
+            self.session.add(new_instance)
+            return new_instance
+        else:
+            self.session.add(obj)
+            return obj
 
     def remove(self, obj):
         self.session.delete(obj)
@@ -209,6 +214,7 @@ class OrderRepository(BaseRepository):
             .options(
                 selectinload(self.model.items).joinedload(OrderItem.product),
                 joinedload(self.model.shipping_info),
+                joinedload(self.model.billing_info),
                 joinedload(self.model.refund_request),
             )
         )
@@ -220,6 +226,7 @@ class OrderRepository(BaseRepository):
             .options(
                 selectinload(self.model.items).joinedload(OrderItem.product),
                 joinedload(self.model.shipping_info),
+                joinedload(self.model.billing_info),
                 joinedload(self.model.refund_request),
             )
             .where(self.model.user_id == user_id)
@@ -270,6 +277,7 @@ class OrderRepository(BaseRepository):
         orders = query.options(
             selectinload(self.model.items).joinedload(OrderItem.product),
             joinedload(self.model.shipping_info),
+            joinedload(self.model.billing_info),
             joinedload(self.model.refund_request),
         )
         return db.paginate(
@@ -277,6 +285,14 @@ class OrderRepository(BaseRepository):
             page=page,
             per_page=per_page,
             error_out=False,
+        )
+
+    def count_user_orders_last_24h(self, user_id, one_day_ago):
+        return self.session.scalar(
+            select(func.count())
+            .select_from(self.model)
+            .where(self.model.user_id == user_id)
+            .where(self.model.created_at >= one_day_ago)
         )
 
 
@@ -293,20 +309,26 @@ class OrderItemRepository(BaseRepository):
         return self.save(order_item)
 
 
-class ShippingAddressRepository(BaseRepository):
-    model = ShippingAddress
-
-    def get_existing_address(self, address):
+class BaseAddressRepository(BaseRepository):
+    def get_existing_address(self, address: dict):
         result = self.session.execute(
             select(self.model).filter_by(
-                full_name=address.full_name,
-                street=address.street,
-                city=address.city,
-                postal_code=address.postal_code,
-                country=address.country,
+                full_name=address["full_name"],
+                street=address["street"],
+                city=address["city"],
+                postal_code=address["postal_code"],
+                country=address["country"],
             )
         )
         return result.scalars().first()
+
+
+class ShippingAddressRepository(BaseAddressRepository):
+    model = ShippingAddress
+
+
+class BillingAddressRepository(BaseAddressRepository):
+    model = BillingAddress
 
 
 class PaymentRepository(BaseRepository):
