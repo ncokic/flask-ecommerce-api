@@ -1,7 +1,7 @@
 from datetime import datetime, UTC, timedelta
 from decimal import Decimal
 import json
-from unittest.mock import MagicMock
+from unittest.mock import MagicMock, patch
 
 import fakeredis
 import pytest
@@ -10,8 +10,8 @@ from sqlalchemy import delete, select
 
 from app import create_app
 from app.enums import UserRole
-from app.extensions import db, limiter, redis_client
-from app.models import Product, User, Cart, CartItem, Order, OrderItem, ShippingAddress, Payment, Refund
+from app.extensions import db, limiter
+from app.models import Product, User, Cart, CartItem, Order, OrderItem, ShippingAddress, Payment, Refund, BillingAddress
 from app.services import OrderService, CartService, PaymentService
 from config import TestingConfig, BASE_DIR
 
@@ -117,10 +117,6 @@ def test_user(app):
 @pytest.fixture
 def seed_users(app):
     with app.app_context():
-        # users_file = BASE_DIR / "seeds" / "users.json"
-        # with open(users_file) as file:
-        #     users_data = json.load(file)
-
         seeded_users = []
         for i in range(1, 16):
             user = User(
@@ -186,33 +182,47 @@ def seed_cart(app, test_user):
 
 
 @pytest.fixture
-def seed_address(app, test_user):
+def seed_checkout_data(app, test_user):
     with app.app_context():
-        address = db.session.execute(
+        shipping_address = db.session.execute(
             select(ShippingAddress).where(ShippingAddress.street == "Test Street 123")
         ).scalars().first()
-        if not address:
-            address = ShippingAddress(
-                full_name="Test Name",
-                street="Test Street 123",
-                city="Test City",
-                postal_code=12345,
-                country="Test Country",
-                contact_phone=12345678,
-            )
-            db.session.add(address)
+        billing_address = db.session.execute(
+            select(BillingAddress).where(BillingAddress.street == "Test Street 456")
+        ).scalars().first()
+        if not shipping_address or not billing_address:
+            address_info = {
+                "full_name": "Test Name",
+                "street": "Test Street 123",
+                "city": "Test City",
+                "postal_code": "12345",
+                "country": "Test Country",
+                "contact_phone": "12345678",
+            }
+            shipping_address = ShippingAddress(**address_info)
+            db.session.add(shipping_address)
+            billing_address = BillingAddress(**address_info)
+            billing_address.street = "Test Street 456"
+            db.session.add(billing_address)
             db.session.commit()
-            db.session.refresh(address)
-        yield address
+
+        yield {
+            "shipping_address": shipping_address,
+            "billing_same_as_shipping": False,
+            "billing_address": billing_address
+        }
 
         db.session.execute(
             delete(ShippingAddress).where(ShippingAddress.street == "Test Street 123")
+        )
+        db.session.execute(
+            delete(BillingAddress).where(BillingAddress.street == "Test Street 456")
         )
         db.session.commit()
 
 
 @pytest.fixture
-def seed_order(app, test_user, seed_cart, seed_products, seed_address):
+def seed_order(app, test_user, seed_cart, seed_products, seed_checkout_data):
     with app.app_context():
         cart, cart_items = seed_cart
         order = db.session.execute(
@@ -221,7 +231,8 @@ def seed_order(app, test_user, seed_cart, seed_products, seed_address):
         if not order:
             order = Order(
                 user_id=test_user["id"],
-                shipping_address_id=seed_address.id,
+                shipping_address_id=seed_checkout_data["shipping_address"].id,
+                billing_address_id=seed_checkout_data["billing_address"].id,
                 total_amount=Decimal("0.00"),
             )
             db.session.add(order)
@@ -248,14 +259,15 @@ def seed_order(app, test_user, seed_cart, seed_products, seed_address):
 
 
 @pytest.fixture
-def seed_orders(app, test_user, seed_address):
+def seed_orders(app, test_user, seed_checkout_data):
     with app.app_context():
         statuses = ["pending", "paid", "processing", "shipped", "delivered", "cancelled"]
         orders = []
         for i in range(1, 13):
             order = Order(
                 user_id=test_user["id"],
-                shipping_address_id=seed_address.id,
+                shipping_address_id=seed_checkout_data["shipping_address"].id,
+                billing_address_id=seed_checkout_data["billing_address"].id,
                 status=statuses[i % len(statuses)],
                 total_amount=Decimal("10.00") * i,
                 created_at=datetime.now(UTC)-timedelta(days=i)
@@ -327,8 +339,10 @@ def mock_order_service():
     mocks = {
         "order_repo": MagicMock(),
         "order_item_repo":  MagicMock(),
-        "address_repo": MagicMock(),
+        "ship_address_repo": MagicMock(),
+        "bill_address_repo": MagicMock(),
         "payment_service": MagicMock(),
+        "fraud_service": MagicMock(),
         "refund_repo": MagicMock(),
         "session": MagicMock(),
     }
@@ -347,3 +361,20 @@ def mock_payment_service():
     }
     service = PaymentService(**mocks)
     return service, mocks
+
+
+@pytest.fixture(autouse=True)
+def mock_ipapi():
+    with patch("app.services.fraud_service.ipapi.location") as mocked_response:
+        mocked_response.return_value = {"country": "US"}
+        yield mocked_response
+
+
+@pytest.fixture(autouse=True)
+def mock_fraud_service():
+    with patch("app.services.fraud_service.FraudService.check_fraud") as mocked_response:
+        mocked_response.return_value = {
+            "risk_assessment": "low",
+            "risk_score": 10
+        }
+        yield mocked_response

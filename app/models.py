@@ -136,11 +136,17 @@ class AddressMixin:
 class ShippingAddress(AddressMixin, db.Model):
     __tablename__  = "shipping_addresses"
 
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+
     order: Mapped[list[Order]] = relationship(back_populates="shipping_info")
 
 
 class BillingAddress(AddressMixin, db.Model):
     __tablename__ = "billing_addresses"
+
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
 
     order: Mapped[list[Order]] = relationship(back_populates="billing_info")
 

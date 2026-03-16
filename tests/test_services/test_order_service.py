@@ -13,39 +13,59 @@ class TestOrderService:
         mock_product = MagicMock(name="Product", stock=2)
         mock_item = MagicMock(product=mock_product, quantity=3)
         mock_cart = MagicMock(items=[mock_item])
+        checkout_payload = {
+            "shipping_address": {"full_name": "Test User", "street": "Test Street 123"},
+            "billing_same_as_shipping": True,
+            "billing_address": None
+        }
 
         with pytest.raises(ServiceError) as e:
-            service.create_order(mock_cart, address="Test Address 123")
+            service.create_order(mock_cart, checkout_payload)
 
         assert e.value.status_code == 409
         assert "not in stock" in e.value.message.lower()
         mocks["session"].commit.assert_not_called()
 
-    def test_create_order_new_address(self, mock_order_service):
+    @pytest.mark.parametrize("existing_adr", [
+        pytest.param(False, id="existing_shipping_address"),
+        pytest.param(True, id="new_addresses")
+    ])
+    def test_create_order_address_checking(self, mock_order_service, existing_adr):
         service, mocks = mock_order_service
         mock_product = MagicMock(name="Product", price=Decimal("20.00"), stock=10)
         mock_item = MagicMock(product=mock_product, quantity=3)
         mock_cart = MagicMock(user_id=1, items=[mock_item])
+        checkout_payload = {
+            "shipping_address": {"full_name": "Test User", "street": "Test Street 123"},
+            "billing_same_as_shipping": True,
+            "billing_address": None
+        }
+        if existing_adr:
+            ship_adr = MagicMock(id=10)
+            mocks["ship_address_repo"].get_existing_address.return_value = ship_adr
+        else:
+            mocks["ship_address_repo"].get_existing_address.return_value = None
+            ship_adr = MagicMock(id=100)
+            mocks["ship_address_repo"].save.return_value =  ship_adr
 
-        mocks["address_repo"].get_existing_address.return_value = None
-        mock_address = MagicMock(id=10)
-        mocks["address_repo"].save.return_value = mock_address
+        mocks["bill_address_repo"].get_existing_address.return_value = None
+        bill_addr = MagicMock(id=20)
+        mocks["bill_address_repo"].save.return_value = bill_addr
 
-        order = service.create_order(mock_cart, "Test Address 123")
+        mocks["fraud_service"].check_fraud.return_value = {
+            "risk_assessment": "low",
+            "risk_score": 10
+        }
+
+        order = service.create_order(mock_cart, checkout_payload)
+        if existing_adr:
+            mocks["ship_address_repo"].save.assert_not_called()
+        else:
+            mocks["ship_address_repo"].save.assert_called_once()
+        mocks["bill_address_repo"].save.assert_called_once()
         assert order.total_amount == Decimal("60.00")
-
-    def test_create_order_existing_address(self, mock_order_service):
-        service, mocks = mock_order_service
-        mock_address = MagicMock(id=100)
-        mocks["address_repo"].get_existing_address.return_value = mock_address
-
-        mock_product = MagicMock(name="Product", price=Decimal("20.00"), stock=10)
-        mock_item = MagicMock(product=mock_product, quantity=3)
-        mock_cart = MagicMock(user_id=1, items=[mock_item])
-
-        order = service.create_order(mock_cart, mock_address)
-        mocks["address_repo"].save.assert_not_called()
-        assert order.shipping_address_id == 100
+        assert order.shipping_address_id == 10 if existing_adr else 100
+        assert order.billing_address_id == 20
 
     def test_cancel_order_invalid_status(self, mock_order_service):
         service, mocks = mock_order_service
@@ -149,3 +169,4 @@ class TestOrderService:
         order = service.change_order_status(order_id=mock_order.id, new_status=target)
         assert order.status == expected
         mocks["session"].commit.assert_called_once()
+

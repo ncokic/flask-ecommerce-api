@@ -91,13 +91,10 @@ class OrderService:
             return repo.save(address)
 
     def create_order(self, cart, checkout_data: dict):
-
         shipping_adr_dict = checkout_data.get("shipping_address")
         shipping_address = self.check_address(shipping_adr_dict)
         if checkout_data["billing_same_as_shipping"]:
             billing_adr_dict = checkout_data.get("shipping_address")
-            print("--- BILLING ADDRESS DICTIONARY ---")
-            print(billing_adr_dict)
         else:
             billing_adr_dict = checkout_data.get("billing_address")
             if billing_adr_dict is None:

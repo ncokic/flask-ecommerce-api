@@ -1,19 +1,24 @@
+import copy
 import json
 import uuid
 
 import pytest
 from sqlalchemy import delete
 
-from app.extensions import db, redis_client
+from app.extensions import db
 from app.models import CartItem
 
-ADDRESS_PAYLOAD = {
-    "full_name": "Test Name",
-    "street": "Test Street 123",
-    "city": "TestCity",
-    "postal_code": "12345",
-    "country": "TestCountry",
-    "contact_phone": "+12345678"
+CHECKOUT_PAYLOAD = {
+    "shipping_address": {
+        "full_name": "Test Name",
+        "street": "Test Street 123",
+        "city": "TestCity",
+        "postal_code": "12345",
+        "country": "TestCountry",
+        "contact_phone": "+12345678"
+    },
+    "billing_same_as_shipping": True,
+    "billing_address": None
 }
 
 
@@ -91,7 +96,8 @@ class TestCart:
             "Authorization": f"Bearer {test_user["access_token"]}",
             "Idempotency-Key": str(uuid.uuid4())
         }
-        payload = ADDRESS_PAYLOAD | {key: value}
+        payload = copy.deepcopy(CHECKOUT_PAYLOAD)
+        payload["shipping_address"][key] = value
 
         response = client.post("api/cart/checkout", json=payload, headers=headers)
         assert response.status_code == expected_status
@@ -108,18 +114,17 @@ class TestCart:
     def test_checkout_idempotency(
             self, client, test_user, seed_cart, seed_products, scenario, first_status, second_status
     ):
-        idempotency_key = str(uuid.uuid4())
         headers = {
             "Authorization": f"Bearer {test_user["access_token"]}",
-            "Idempotency-Key": idempotency_key
+            "Idempotency-Key": str(uuid.uuid4())
         }
-        payload = ADDRESS_PAYLOAD
+        payload = copy.deepcopy(CHECKOUT_PAYLOAD)
 
         response = client.post("/api/cart/checkout", json=payload, headers=headers)
         assert response.status_code == first_status
 
         if scenario == "mismatch":
-            payload["name"] = "Changed Name"
+            payload["shipping_address"]["full_name"] = "Changed Name"
 
         response = client.post("/api/cart/checkout", json=payload, headers=headers)
         assert response.status_code == second_status
@@ -138,8 +143,39 @@ class TestCart:
             "Authorization": f"Bearer {test_user["access_token"]}",
             "Idempotency-Key": idempotency_key
         }
-        payload = ADDRESS_PAYLOAD
+        payload = CHECKOUT_PAYLOAD
 
-        response = client.post("/api/cart/checkout", json=payload,  headers=headers)
+        response = client.post("/api/cart/checkout", json=payload, headers=headers)
         assert response.status_code == 409
         assert "in progress" in response.get_json()["message"].lower()
+
+    @pytest.mark.parametrize("bill_adr_provided, expected_status", [
+        pytest.param(True, 201, id="valid_request"),
+        pytest.param(False, 400, id="billing_address_missing"),
+    ])
+    def test_checkout_shipping_billing_mismatch(
+            self, client, test_user, seed_cart, seed_products, bill_adr_provided, expected_status
+    ):
+        payload = copy.deepcopy(CHECKOUT_PAYLOAD)
+        payload["billing_same_as_shipping"] = False
+        headers = {
+            "Authorization": f"Bearer {test_user["access_token"]}",
+            "Idempotency-Key": str(uuid.uuid4())
+        }
+
+        if bill_adr_provided:
+            payload["billing_address"] = {
+                "full_name": "Test Name",
+                "street": "Test Street 456",
+                "city": "TestCity 2",
+                "postal_code": "34567",
+                "country": "TestCountry",
+                "contact_phone": "+12345678"
+            }
+        response = client.post("/api/cart/checkout", json=payload, headers=headers)
+        assert response.status_code == expected_status
+        if bill_adr_provided:
+            data = response.get_json()["data"]
+            print("--- RESPONSE DATA ---")
+            print(data)
+            assert data["order"]["shipping_info"] != data["order"]["billing_info"]

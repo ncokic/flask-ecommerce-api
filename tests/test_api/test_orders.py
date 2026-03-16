@@ -13,7 +13,6 @@ class TestOrders:
     ])
     def test_get_order(self, client, test_user, seed_order, order_id, expected_response):
         response = client.get(f"/api/orders/{order_id}", headers=test_user["headers"])
-        print(response.get_json())
         assert response.status_code == expected_response
         if response.status_code == 200:
             data = response.get_json()["data"]
