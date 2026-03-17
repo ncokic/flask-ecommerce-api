@@ -32,7 +32,7 @@ class PaymentService:
         return payment
 
     def create_payment(self, order):
-        if order.status != OrderStatus.PENDING:
+        if order.status not in (OrderStatus.PENDING, OrderStatus.PENDING_REVIEW):
             raise ServiceError(409, "Order payment already processed.")
 
         payment = self.payment_repo.create_payment(order)
@@ -41,12 +41,15 @@ class PaymentService:
     def payment_webhook(self, payment_id, event):
         payment = self.payment_repo.get_by_id(payment_id)
         if not payment:
-            raise ServiceError(404, "Payment not found")
-
+            raise ServiceError(404, "Payment not found.")
         if payment.status != PaymentStatus.PENDING:
             raise ServiceError(409, "Payment already processed.")
 
         order = payment.order
+        if order.status == OrderStatus.PENDING_REVIEW:
+            raise ServiceError(403, "Payment blocked: Order is currently under review.")
+        if order.status != OrderStatus.PENDING:
+            raise ServiceError(400, f"Cannot process payment for order in {order.status} status.")
 
         if event == "success":
             for item in order.items:

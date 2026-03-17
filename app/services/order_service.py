@@ -3,7 +3,7 @@ from decimal import Decimal
 
 from sqlalchemy.orm import Session
 
-from app.enums import OrderStatus, RefundStatus, RefundReason
+from app.enums import OrderStatus, RefundStatus, RefundReason, PaymentStatus
 from app.repositories import OrderRepository, OrderItemRepository, ShippingAddressRepository, RefundRepository, \
     BillingAddressRepository
 from app.services.payment_service import PaymentService
@@ -80,6 +80,23 @@ class OrderService:
 
         self.session.commit()
         self.session.refresh(order)
+        return order
+
+    def review_flagged_order(self, order_id, action):
+        order = self.order_repo.get_by_id(order_id)
+        if not order:
+            raise ServiceError(404, "Order not found.")
+        if order.status != OrderStatus.PENDING_REVIEW:
+            raise ServiceError(400, "Status is not pending review.")
+
+        if action == "approve":
+            order.status = OrderStatus.PENDING
+        elif action == "reject":
+            order.status = OrderStatus.CANCELLED
+            payment = self.payment_service.get_payment(order_id)
+            payment.status = PaymentStatus.REJECTED
+        else:
+            raise ServiceError(400, "Invalid review action. Use 'approve' or 'reject'.")
         return order
 
     def check_address(self, address: dict, billing=False):

@@ -117,10 +117,15 @@ class OrderDeliverySchema(OrderBaseSchema):
         exclude = ()
 
 
+class OrderReviewFraudSchema(ma.Schema):
+    action = Str(required=True, validate=OneOf(["approve", "reject"]))
+
+
 class OrderSchemas:
     Base = OrderBaseSchema
     Simplified = OrderSimplifiedSchema
     Status = OrderStatusSchema
+    ReviewFraud = OrderReviewFraudSchema
     Delivery = OrderDeliverySchema
     Query = OrderQuerySchema
     AdminQuery = OrderAdminQuerySchema

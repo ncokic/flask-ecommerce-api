@@ -113,6 +113,20 @@ def change_order_status(data, order_id):
     return api_response(data=OrderSchemas.Base().dump(order))
 
 
+@api_admin_bp.route("/orders/<int:order_id>/review_flagged", methods=["PATCH"])
+@admin_only
+@api_admin_bp.arguments(OrderSchemas.ReviewFraud)
+@api_admin_bp.response(200, OrderSchemas.Response)
+def review_flagged_order(data, order_id):
+    """Process potentially fraudulent orders flagged by FastAPI Fraud Check Microservice."""
+    service = get_order_service()
+    order = service.review_flagged_order(order_id, data["action"])
+    return api_response(
+        message=f"Order reviewed - status changed to {order.status}",
+        data=OrderSchemas.Base().dump(order)
+    )
+
+
 @api_admin_bp.route("/orders/<int:order_id>/refund", methods=["PATCH"])
 @admin_only
 @api_admin_bp.arguments(PaymentSchemas.RefundReview)

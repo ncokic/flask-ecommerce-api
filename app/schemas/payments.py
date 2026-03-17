@@ -29,7 +29,7 @@ class PaymentStatusSchema(PaymentBaseSchema):
 
 
 class PaymentWebhookCreateSchema(ma.Schema):
-    payment_id = Int(required=True, validate=Range(min=1))
+    payment_id = Int(required=True)
     event = Str(required=True, validate=OneOf(["success", "failure"]))
 
 
