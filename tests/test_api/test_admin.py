@@ -104,3 +104,24 @@ class TestAdmin:
         if response.status_code == 200:
             data = response.get_json()["data"]
             assert data["order"]
+
+    @pytest.mark.parametrize("action, order_status, expected_status", [
+        pytest.param("approve", "pending_review", 200, id="flagged_order_accepted"),
+        pytest.param("reject", "pending_review", 200, id="flagged_order_rejected"),
+        pytest.param("invalid", "pending_review", 422, id="invalid_request"),
+        pytest.param("approve", "pending", 400, id="invalid_order_status")
+    ])
+    def test_review_flagged_order(
+            self, client, admin_user, seed_payment, action, order_status, expected_status
+    ):
+        order = seed_payment.order
+        order.status = order_status
+        response = client.patch(
+            f"/api/admin/orders/{order.id}/review_flagged",
+            json={"action": action},
+            headers=admin_user["headers"]
+        )
+        assert response.status_code == expected_status
+        if response.status_code == 200:
+            data = response.get_json()["data"]
+            assert data["status"] != "pending_review"

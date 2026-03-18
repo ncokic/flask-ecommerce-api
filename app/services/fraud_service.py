@@ -13,7 +13,7 @@ class FraudService:
     def __init__(self, order_repo: OrderRepository):
         self.order_repo = order_repo
 
-    def gather_data(self, order, checkout_data):
+    def gather_data(self, order, checkout_data, client_ip=None):
         one_day_ago = datetime.now() - timedelta(hours=24)
         orders_last_24h = self.order_repo.count_user_orders_last_24h(order.user_id, one_day_ago)
 
@@ -22,7 +22,8 @@ class FraudService:
         shipping_country = coco.convert(
             names=shipping_address["country"], to="iso2")
 
-        client_ip = request.remote_addr
+        if not client_ip:
+            client_ip = request.remote_addr
         # manual ip for testing purposes
         if client_ip in ["localhost", "127.0.0.1"]:
             client_ip = "8.8.8.8"
@@ -45,7 +46,6 @@ class FraudService:
             "ip_country": ip_country,
             "account_age_min": acc_age_min
         }
-
 
     def check_fraud(self, order, checkout_data):
         payload = self.gather_data(order, checkout_data)

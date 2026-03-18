@@ -170,3 +170,46 @@ class TestOrderService:
         assert order.status == expected
         mocks["session"].commit.assert_called_once()
 
+    @pytest.mark.parametrize("action, expected_order_status", [
+        pytest.param("approve", "pending", id="flagged_order_approved"),
+        pytest.param("reject", "rejected", id="flagged_order_rejected")
+    ])
+    def test_review_flagged_order_actions(self, mock_order_service, action, expected_order_status):
+        service, mocks = mock_order_service
+        mock_payment = MagicMock(id=10, status="pending")
+        mock_order = MagicMock(id=10, status="pending_review", payments=[mock_payment])
+        mocks["order_repo"].get_by_id.return_value = mock_order
+        if action == "reject":
+            mocks["payment_service"].get_payment.return_value = mock_payment
+        order = service.review_flagged_order(mock_order.id, action)
+        assert order.status == expected_order_status
+        mocks["session"].commit.assert_called_once()
+        if action == "reject":
+            assert mock_payment.status == "rejected"
+
+    @pytest.mark.parametrize("fraud_risk", [
+        pytest.param("high", id="high_risk_of_fraud"),
+        pytest.param("medium", id="medium_risk_of_fraud"),
+        pytest.param("low", id="low_to_no_risk_of_fraud")
+    ])
+    def test_create_order_api_response(self, mock_order_service, checkout_data, fraud_risk):
+        service, mocks = mock_order_service
+        mock_product = MagicMock(name="Product", price=Decimal("20.00"), stock=10)
+        mock_item = MagicMock(product=mock_product, quantity=3)
+        mock_cart = MagicMock(user_id=1, items=[mock_item])
+
+        ship_address = MagicMock(id=10)
+        mocks["ship_address_repo"].get_existing_address.return_value = ship_address
+        bill_address = MagicMock(id=10)
+        mocks["bill_address_repo"].get_existing_address.return_value = bill_address
+
+        mocks["fraud_service"].check_fraud.return_value = {"risk_assessment": fraud_risk}
+
+        order = service.create_order(mock_cart, checkout_data)
+        if fraud_risk == "high":
+            assert order.status == "rejected"
+        else:
+            assert order
+            if fraud_risk == "medium":
+                assert order.status == "pending_review"
+

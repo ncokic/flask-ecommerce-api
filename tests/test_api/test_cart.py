@@ -3,10 +3,10 @@ import json
 import uuid
 
 import pytest
-from sqlalchemy import delete
+from sqlalchemy import delete, select
 
 from app.extensions import db
-from app.models import CartItem
+from app.models import CartItem, Order
 
 CHECKOUT_PAYLOAD = {
     "shipping_address": {
@@ -176,6 +176,4 @@ class TestCart:
         assert response.status_code == expected_status
         if bill_adr_provided:
             data = response.get_json()["data"]
-            print("--- RESPONSE DATA ---")
-            print(data)
             assert data["order"]["shipping_info"] != data["order"]["billing_info"]

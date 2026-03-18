@@ -1,7 +1,6 @@
+import json
 from datetime import datetime, UTC, timedelta
 from decimal import Decimal
-import json
-from unittest.mock import MagicMock, patch
 
 import fakeredis
 import pytest
@@ -12,7 +11,6 @@ from app import create_app
 from app.enums import UserRole
 from app.extensions import db, limiter
 from app.models import Product, User, Cart, CartItem, Order, OrderItem, ShippingAddress, Payment, Refund, BillingAddress
-from app.services import OrderService, CartService, PaymentService
 from config import TestingConfig, BASE_DIR
 
 
@@ -318,63 +316,3 @@ def seed_refund_request(app, seed_order):
 
         db.session.delete(refund)
         db.session.commit()
-
-
-@pytest.fixture
-def mock_cart_service():
-    mocks = {
-        "cart_repo": MagicMock(),
-        "cart_item_repo": MagicMock(),
-        "product_repo": MagicMock(),
-        "order_service": MagicMock(),
-        "payment_service": MagicMock(),
-        "session": MagicMock(),
-    }
-    service = CartService(**mocks)
-    return service, mocks
-
-
-@pytest.fixture
-def mock_order_service():
-    mocks = {
-        "order_repo": MagicMock(),
-        "order_item_repo":  MagicMock(),
-        "ship_address_repo": MagicMock(),
-        "bill_address_repo": MagicMock(),
-        "payment_service": MagicMock(),
-        "fraud_service": MagicMock(),
-        "refund_repo": MagicMock(),
-        "session": MagicMock(),
-    }
-    service = OrderService(**mocks)
-    return service, mocks
-
-
-@pytest.fixture
-def mock_payment_service():
-    mocks = {
-        "cart_item_repo": MagicMock(),
-        "order_repo": MagicMock(),
-        "payment_repo": MagicMock(),
-        "refund_repo": MagicMock(),
-        "session": MagicMock(),
-    }
-    service = PaymentService(**mocks)
-    return service, mocks
-
-
-@pytest.fixture(autouse=True)
-def mock_ipapi():
-    with patch("app.services.fraud_service.ipapi.location") as mocked_response:
-        mocked_response.return_value = {"country": "US"}
-        yield mocked_response
-
-
-@pytest.fixture(autouse=True)
-def mock_fraud_service():
-    with patch("app.services.fraud_service.FraudService.check_fraud") as mocked_response:
-        mocked_response.return_value = {
-            "risk_assessment": "low",
-            "risk_score": 10
-        }
-        yield mocked_response

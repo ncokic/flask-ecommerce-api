@@ -64,41 +64,6 @@ class OrderService:
             raise ServiceError(404, "Order not found")
         return order
 
-    def change_order_status(self, order_id, new_status):
-        order = self.order_repo.get_by_id(order_id)
-        if not order:
-            raise ServiceError(404, "Order not found")
-
-        if order.status == OrderStatus.PAID and new_status == OrderStatus.PROCESSING:
-            order.status = OrderStatus.PROCESSING
-
-        elif order.status == OrderStatus.PROCESSING and new_status == OrderStatus.SHIPPED:
-            order.status = OrderStatus.SHIPPED
-
-        else:
-            raise ServiceError(409, "Invalid order status.")
-
-        self.session.commit()
-        self.session.refresh(order)
-        return order
-
-    def review_flagged_order(self, order_id, action):
-        order = self.order_repo.get_by_id(order_id)
-        if not order:
-            raise ServiceError(404, "Order not found.")
-        if order.status != OrderStatus.PENDING_REVIEW:
-            raise ServiceError(400, "Status is not pending review.")
-
-        if action == "approve":
-            order.status = OrderStatus.PENDING
-        elif action == "reject":
-            order.status = OrderStatus.CANCELLED
-            payment = self.payment_service.get_payment(order_id)
-            payment.status = PaymentStatus.REJECTED
-        else:
-            raise ServiceError(400, "Invalid review action. Use 'approve' or 'reject'.")
-        return order
-
     def check_address(self, address: dict, billing=False):
         repo = self.ship_address_repo if not billing else self.bill_address_repo
         existing_address = repo.get_existing_address(address)
@@ -132,19 +97,14 @@ class OrderService:
             total_amount += item.quantity * item.product.price
         order.total_amount = total_amount
 
-        try:
-            with self.session.begin_nested():
-                fraud_data = self.fraud_service.check_fraud(order, checkout_data)
-                if fraud_data["risk_assessment"] == "high":
-                    return None
+        with self.session.begin_nested():
+            fraud_data = self.fraud_service.check_fraud(order, checkout_data)
+            if fraud_data["risk_assessment"] == "high":
+                order.status = OrderStatus.REJECTED
 
-                if fraud_data["risk_assessment"] == "medium":
-                    order.status = OrderStatus.PENDING_REVIEW
-                return order
-
-        except Exception as e:
-            self.session.rollback()
-            raise e
+            if fraud_data["risk_assessment"] == "medium":
+                order.status = OrderStatus.PENDING_REVIEW
+            return order
 
     def cancel_order(self, user_id, order_id):
         order = self.get_user_order(user_id, order_id)
@@ -176,6 +136,44 @@ class OrderService:
                 item.product.stock += item.quantity
 
         order.status = OrderStatus.CANCELLED
+        self.session.commit()
+        self.session.refresh(order)
+        return order
+
+    def change_order_status(self, order_id, new_status):
+        order = self.order_repo.get_by_id(order_id)
+        if not order:
+            raise ServiceError(404, "Order not found")
+
+        if order.status == OrderStatus.PAID and new_status == OrderStatus.PROCESSING:
+            order.status = OrderStatus.PROCESSING
+
+        elif order.status == OrderStatus.PROCESSING and new_status == OrderStatus.SHIPPED:
+            order.status = OrderStatus.SHIPPED
+
+        else:
+            raise ServiceError(409, "Invalid order status.")
+
+        self.session.commit()
+        self.session.refresh(order)
+        return order
+
+    def review_flagged_order(self, order_id, action):
+        order = self.order_repo.get_by_id(order_id)
+        if not order:
+            raise ServiceError(404, "Order not found.")
+        if order.status != OrderStatus.PENDING_REVIEW:
+            raise ServiceError(400, "Status is not pending review.")
+
+        if action == "approve":
+            order.status = OrderStatus.PENDING
+        elif action == "reject":
+            order.status = OrderStatus.REJECTED
+            payment = self.payment_service.get_payment(order_id)
+            payment.status = PaymentStatus.REJECTED
+        else:
+            raise ServiceError(400, "Invalid review action. Use 'approve' or 'reject'.")
+
         self.session.commit()
         self.session.refresh(order)
         return order

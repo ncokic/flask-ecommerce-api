@@ -20,6 +20,7 @@ class OrderStatus(BaseEnum):
     DELIVERED = "delivered"
     CANCELLED = "cancelled"
     PENDING_REVIEW = "pending_review"
+    REJECTED = "rejected"
 
 
 class PaymentStatus(BaseEnum):

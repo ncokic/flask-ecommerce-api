@@ -1,5 +1,6 @@
 from sqlalchemy.orm import Session
 
+from app.enums import OrderStatus
 from app.repositories import CartRepository, CartItemRepository, ProductRepository
 from app.services.order_service import OrderService
 from app.services.payment_service import PaymentService
@@ -106,7 +107,8 @@ class CartService:
         if not cart.items:
             raise ServiceError(422, "You cannot checkout an empty cart.")
         order = self.order_service.create_order(cart, checkout_data)
-        if order is None:
+        if order.status == OrderStatus.REJECTED:
+            self.session.commit()
             raise ServiceError(403, "Transaction declined.")
         payment = self.payment_service.create_payment(order)
         self.session.commit()
