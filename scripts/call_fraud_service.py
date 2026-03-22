@@ -11,8 +11,8 @@ load_dotenv()
 PAYLOAD = {
     "order_id": 20,
     "user_id": 40,
-    "order_amount": 15.99,
-    "orders_last_24h": 2,
+    "order_amount": 155.99,
+    "orders_last_24h": 5,
     "is_shipping_billing_mismatch": True,
     "shipping_country": "US",
     "ip_country": "GB",
@@ -42,7 +42,7 @@ def call_fraud_model(payload):
 
     response.raise_for_status()
     data = response.json()
-    print (json.dumps(data, indent=4))
+    print(json.dumps(data, indent=4))
 
 
 if __name__ == "__main__":

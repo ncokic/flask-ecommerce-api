@@ -30,6 +30,7 @@ services:
     environment:
       - DATABASE_URL=postgresql+psycopg://${DB_USER:-hello_flask}:${DB_PASSWORD:-hello_flask}@db:5432/${DB_NAME:-ecommerce_prod}
       - REDIS_URL=redis://redis:6379/0
+      - FRAUD_SERVICE_URL=http://fraud_service:8000
       - FLASK_ENV=development
     depends_on:
       db:
@@ -37,7 +38,15 @@ services:
       redis:
         condition: service_healthy
     command: >
-      sh -c "flask db upgrade && gunicorn  --bind 0.0.0.0:5000 'app:create_app()'"
+      sh -c "flask db upgrade && gunicorn --bind 0.0.0.0:5000 'app:create_app()'"
+    networks:
+      - default
+      - ecommerce_network
+
+networks:
+  ecommerce_network:
+    external: true
+    name: ecommerce_shared_net
 
 volumes:
   postgres_data:

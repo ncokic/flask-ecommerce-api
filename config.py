@@ -15,7 +15,7 @@ class Config:
     SQLALCHEMY_TRACK_MODIFICATIONS = False
     WEBHOOK_SECRET_KEY = os.getenv("WEBHOOK_SECRET_KEY")
     REDIS_URL = os.getenv("REDIS_URL", None)
-    FRAUD_SERVICE_URL = os.getenv("FRAUD_SERVICE_URL")
+    FRAUD_SERVICE_URL = os.getenv("FRAUD_SERVICE_URL", "http://localhost:8080")
 
     #JWT
     JWT_SECRET_KEY = os.getenv("JWT_SECRET_KEY")

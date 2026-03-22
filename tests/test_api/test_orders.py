@@ -142,7 +142,7 @@ class TestOrders:
         order = seed_order
         order.status = order_status
         payload = {"order_id": f"{order.id}"}
-        signature = generate_signature_header(payload)
+        signature = generate_signature_header(payload, testing=True)
         signature = signature if sig_valid else signature + "a"
         headers = {
             "Idempotency-Key": str(uuid.uuid4()),

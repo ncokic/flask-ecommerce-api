@@ -6,6 +6,7 @@ import ipapi
 from flask import request
 
 from app.repositories import OrderRepository
+from scripts.generate_headers import generate_signature_header
 from config import Config
 
 
@@ -25,9 +26,11 @@ class FraudService:
         if not client_ip:
             client_ip = request.remote_addr
         # manual ip for testing purposes
-        if client_ip in ["localhost", "127.0.0.1"]:
+        if client_ip in ["localhost", "127.0.0.1"] or client_ip.startswith("172."):
             client_ip = "8.8.8.8"
-        ip_country = ipapi.location(client_ip)["country"]
+        location_data = ipapi.location(client_ip)
+        country_code = location_data.get("country") if location_data else None
+        ip_country = country_code if (country_code and len(country_code) == 2) else "US"
 
         user_created = order.user.created_at
         if user_created.tzinfo is None:
@@ -52,7 +55,10 @@ class FraudService:
         with httpx.Client(base_url=Config.FRAUD_SERVICE_URL) as client:
             try:
                 timeout = httpx.Timeout(5.0, connect=2.0)
-                response = client.post("/check_fraud", json=payload, timeout=timeout)
+                headers = {
+                    "X-Signature": generate_signature_header(payload)
+                }
+                response = client.post("/check_fraud", json=payload, headers=headers, timeout=timeout)
                 return response.json()
 
             except httpx.ConnectTimeout:

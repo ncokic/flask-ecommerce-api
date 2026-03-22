@@ -20,7 +20,7 @@ class TestPayments:
         payload = {"payment_id": payment.id, "event": event}
         headers = {
             "Idempotency-Key": str(uuid.uuid4()),
-            "X-Signature": generate_signature_header(payload)
+            "X-Signature": generate_signature_header(payload, testing=True)
         }
         response = client.post("/api/payments/webhook", json=payload, headers=headers)
         assert response.status_code == expected_code
