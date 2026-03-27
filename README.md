@@ -1,6 +1,6 @@
 ## Overview
 
-A containerized, production-style REST API that simulates the backend of an e-commerce platform. It provides authentication, product management, shopping cart functionality, order processing, payment and delivery webhook simulation and admin endpoints. The project focuses on backend architecture, database design, system reliability features (such as idempotent requests and webhook security) and performance (N+1 query optimization, Redis caching).
+A containerized, monolithic production-style REST API that simulates the backend of an e-commerce platform. It provides authentication, product management, shopping cart functionality, order processing, payment and delivery webhook simulation and admin endpoints. The project focuses on backend architecture, database design, system reliability features (such as idempotent requests and webhook security) and performance (N+1 query optimization, Redis caching).
 
 ---
 
@@ -18,25 +18,50 @@ A containerized, production-style REST API that simulates the backend of an e-co
 
 ## Installation & Setup
 
-There are 2 different options provided depending on if you want to run the app through Docker or locally. First, clone the repo:
-```bash
-git clone https://github.com/ncokic/flask-ecommerce-api.git
-cd flask-ecommerce-api
-```
+There are 2 different options provided depending on if you want to run the app through Docker or locally.
 
 ### Option 1: Docker (Recommended):
-This approach automatically sets up the API, PostgreSQL database and Redis cache containers.
+
+If you want to launch the entire eCommerce ecosystem, including the [Fraud Check microservice](https://github.com/ncokic/fastapi-fraud-check-microservice) that this project is integrated with, follow the optional step first:
+
+#### (Optional) Set up shared network and Fraud Check microservice container:
 
 ```bash
-# 1. Create your environment file from the provided example
+# 1. Create the shared network:
+docker network create ecommerce_shared_net
+
+#2 Clone the Fraud Check microservice repo:
+git clone https://github.com/ncokic/fastapi-fraud-check-microservice.git
+cd fastapi-fraud-check-microservice
+
+#3. Create environment file from the provided example
+# Make sure that the shared key matches in both apps (see .env.example for more details)
 cp .env.example .env
 
-# 2. Set up Docker containers
+#4. Build container and exit the project folder
 make up
 # OR
 docker-compose up --build -d # Windows
 
-# 3. Initialize the database and seed initial testing data
+cd ..
+```
+
+#### (Mandatory) Launch the eCommerce API, PostgreSQL database and Redis cache containers:
+
+```bash
+#1. Clone the repo:
+git clone https://github.com/ncokic/flask-ecommerce-api.git
+cd flask-ecommerce-api
+
+# 2. Create environment file from the provided example
+cp .env.example .env
+
+# 3. Set up Docker containers
+make up
+# OR
+docker-compose up --build -d # Windows
+
+# 4. Initialize the database and seed initial testing data
 make setup
 # OR
 docker-compose exec web flask setup # Windows
@@ -60,12 +85,14 @@ python -m pip install -r requirements.txt
 # 4. Create your environment file from the provided example
 cp .env.example .env
 
-# 5. Run the setup script
+# 5. Run the setup script to create tables and seed database with test product + user data
 flask setup
 
 # 6. Start the server
 flask run
 ```
+
+Note: Flask app is designed to fail gracefully if for some reason it cannot communicate with the FastAPI fraud check service - it defaults to low-risk assessment rather than crashing the whole system.
 
 ---
 
@@ -78,6 +105,7 @@ sequenceDiagram
     participant Client
     participant Route
     participant Service
+    participant Fraud as FastAPI Fraud Service
     participant Repo as Repository/Database
     participant Redis as Redis Cache
 
@@ -88,22 +116,20 @@ sequenceDiagram
         Redis-->>Route: Return Cached Response
         Route-->>Client: 200 OK (Request Already Processed)
     else Key New
-        Note over Route: Rate-Limiting Check
-        Note over Route: Schema Validation (Marshmallow)
+        Note over Route: Rate-Limiting & Validation Check
         Route->>Service: checkout_cart(user_id, address)
-        Service->>Repo: get_or_create_user_cart(user_id)
-        Repo-->>Service: Cart Object
-
-        alt Cart is Empty
-            Service-->>Route: raise ServiceError(422)
-            Route-->>Client: 422 Unprocessable Entity
-        else Cart has Items
-            Service->>Repo: create_order(cart, address)
-            Repo-->>Service: Order Object
-            Service->>Repo: create_payment(order)
-            Repo-->>Service: Payment Object
-            Service->>Repo: session.commit()
-            Service-->>Route: Order & Payment Objects
+        Service->>Repo: Fetch Cart & Create Order
+        Repo-->>Service: Cart, Order
+        Service->>Fraud: Gather & Send Order Data
+        Note over Service, Fraud: HMAC Signed Request
+        Fraud-->>Service: Risk Assessment
+        alt High Risk
+            Service-->>Route: raise ServiceError(403)
+            Route-->>Client: 403 Forbidden
+        else Low/Medium Risk
+            Service->>Repo: Create Payment
+            Repo-->>Service: Payment
+            Service-->>Route: Order & Payment Data
             Route->>Redis: Store Response for Idempotency Check
             Route-->>Client: 201 Created (JSON)
         end
@@ -123,6 +149,15 @@ Key architectural decisions:
 ---
 
 ## Key Highlights
+
+### Fraud Detection Microservice Integration
+
+This project integrates with a [FastAPI fraud detection microservice:](https://github.com/ncokic/fastapi-fraud-check-microservice)
+
+- During checkout, Flask API sends order/user metadata to the fraud service.
+- The service evaluates risk using a locally trained ML model + set of guardrails.
+- High-risk orders are rejected while medium-risk orders are flagged for manual admin review.
+- Incorporates graceful degradation, defaulting to low-risk assessment which ensures that the core functionality of the eCommerce app is maintained even if the fraud service is down.
 
 ### Idempotent Requests
 
@@ -161,7 +196,7 @@ The application is fully containerized using Docker and Docker Compose. Containe
 
 The testing covers API endpoints, authentication, services, repositories and business logic.
 
-- **94% Code Coverage**: 113 unit and integration tests using pytest.
+- **94% Code Coverage**: 130 unit and integration tests using pytest.
 - **Dependency Injection**: Utilized FakeRedis to mock Redis during testing ensuring the test suites remain fast and isolated from infrastructure.
 
 ---
@@ -169,7 +204,6 @@ The testing covers API endpoints, authentication, services, repositories and bus
 ## API Documentation
 
 Interactive Swagger documentation using Flask-Smorest which is generated as the app's home page.
-
 
 ## Project Goals
 
